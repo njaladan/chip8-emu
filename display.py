@@ -1,65 +1,78 @@
 import tkinter, time
+from pygame import display, HWSURFACE, DOUBLEBUF, Color, draw
 
-# BIG TOGO: move to pygame from my hacky Tkinter implementation
+SCREEN_DEPTH = 8
 
-# TODO: make height, width a variable r open to change
+PIXEL_COLORS = {
+    0: Color(0, 0, 0, 255),
+    1: Color(250, 250, 250, 255)
+}
+
+
 class Display:
 
-    def __init__(self):
-        self.window = tkinter.Tk()
-        self.canvas = tkinter.Canvas(self.window, width=1024, height=512)
-        self.canvas.pack()
-        self.pixels = list()
-        self.framebuffer = [0] * 2048
-        pixel_size = 16
-        for i in range(32):
-            for j in range(64):
-                pixel = self.canvas.create_rectangle(j * pixel_size,
-                                                     i * pixel_size,
-                                                     (j + 1) * pixel_size,
-                                                     (i + 1) * pixel_size,
-                                                     fill="black",
-                                                     outline="")
-                self.pixels.append(pixel)
+    def __init__(self, scale_factor=16):
+        self.height = 32
+        self.width = 64
+        self.scale_factor = scale_factor
+        self.initialize_window()
 
-    # Note: clearing the screen is just setting the frame buffer to all 0
-    def render(self):
-        for i in range(2048):
-            pixel = self.pixels[i]
-            value = self.framebuffer[i]
-            color = "black"
-            if value == 1:
-                color = "white"
-            self.canvas.itemconfig(pixel, fill=color)
-        # self.print_frame()
 
-    def print_frame(self):
-        buf = self.framebuffer
-        print("--------------------------------------------------------------------")
-        for i in range(32):
-            s = ''
-            for j in range(64):
-                s += str(buf[i * 64 + j])
-            print(s)
+    def initialize_window(self):
+        display.init()
+        self.surface = display.set_mode(
+            ((self.width * self.scale_factor),
+             (self.height * self.scale_factor)),
+            HWSURFACE | DOUBLEBUF,
+            SCREEN_DEPTH)
+        display.set_caption("CHIP-8 Emulator")
+        self.clear_screen()
+        self.update()
+            
+        
+
+    def update(self):
+        display.flip()
+
 
 
     def draw_sprite(self, x, y, sprite):
         flag = 0
         for byte in sprite:
             for bit in range(8):
-                value = (byte >> (7 - bit)) & 1
-                index = (y % 32) * 64 + ((x + bit) % 64)
-                previous = self.framebuffer[index]
-                if previous == 1 and value == 1:
+                color = (byte >> (7 - bit)) & 1
+                previous = self.get_pixel(x, y)
+                if previous == 1 and color == 1:
                     flag = 1
-                self.framebuffer[index] = previous ^ value
+                self.draw_pixel(x + bit, y, color)
             y += 1
-        self.render()
+        self.update()
         return flag
 
 
+    def draw_pixel(self, x, y, color):
+        x_coord = (x % 64) * self.scale_factor
+        y_coord = (y % 32) * self.scale_factor
+        previous = self.get_pixel(x, y)
+        new_color = previous ^ color
+        draw.rect(self.surface,
+                  PIXEL_COLORS[new_color],
+                  (x_coord, y_coord, self.scale_factor, self.scale_factor))
+
+    
+
+    def get_pixel(self, x, y):
+        x_coord = (x % 64) * self.scale_factor
+        y_coord = (y % 32) * self.scale_factor
+        pixel_color = self.surface.get_at((x_coord, y_coord))
+        if pixel_color == PIXEL_COLORS[0]:
+            return 0
+        return 1
+
+
+
     def clear_screen(self):
-        # TODO: check if the below is acceptable / has ok performance compared
-        # to manual clearing
-        self.framebuffer = [0] * 2048
-        self.render()
+        self.surface.fill(PIXEL_COLORS[0])
+
+
+        

@@ -1,6 +1,16 @@
 import struct, array, sys, time, random
 from display import Display
-from utils import BUILT_IN_FONT
+from utils import BUILT_IN_FONT, KEY_MAPPING
+import pygame
+
+
+EXECUTE_DELAY = 1 # milliseconds
+TIMER = pygame.USEREVENT + 1
+
+
+filepath = "./games/GUESS"
+
+
 
 class CPU:
     def __init__(self, program):
@@ -24,11 +34,28 @@ class CPU:
 
     def emulate(self):
         counter = 0
-        while True:
+        running = True
+
+        pygame.time.set_timer(TIMER, EXECUTE_DELAY)
+
+        
+        while running:
+            pygame.time.wait(EXECUTE_DELAY)
             self.emulate_cycle()
             counter += 1
-            if counter % 1000 == 0:
-                print(self.program_counter)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+                if event.type == TIMER:
+                    self.decrement_timers()
+
+
+        pygame.display.quit()
+        pygame.quit()
+        print(counter)
+
 
     def emulate_cycle(self):
 
@@ -55,10 +82,12 @@ class CPU:
             elif address == 0x0ee:
                 if self.stack:
                     self.program_counter = self.stack.pop()
+                else:
+                    print("Invalid return")
+                    exit(1)
 
             # 0x0NNN: run on RCA-1802
             else:
-                # todo: how to implement this?
                 print("Not running RCA 1802 program; skipping")
                 self.program_counter += 2
 
@@ -68,7 +97,7 @@ class CPU:
 
         # 0x2NNN: call subroutine at address NNN
         elif top == 2:
-            self.stack.append(self.program_counter)
+            self.stack.append(self.program_counter + 2)
             self.program_counter = address
 
         # 0x3XNN: skip next line if Vx == NN
@@ -198,12 +227,25 @@ class CPU:
                 self.registers[0xf] = flag
             self.program_counter += 2
 
-        # keyboard operations; will depend on Tkinter display
+        # keyboard operations
         elif top == 0xe:
+            key_val = self.registers[regx]
+            mapped_key = KEY_MAPPING[key_val]
+            keys = pygame.key.get_pressed()
+            keypress = keys[mapped_key]
+            
             if byte == 0x9e:
-                print("skip next instruction if key stored in V{0} is pressed".format(regx))
+                if keypress:
+                    self.program_counter += 4
+                else:
+                    self.program_counter += 2
+
             elif byte == 0xa1:
-                print("skip next instruction if key stored in V{0} is NOT pressed".format(regx))
+                if keypress:
+                    self.program_counter += 2
+                else:
+                    self.program_counter += 4
+
             else:
                 print("Invalid instruction; skipping")
 
@@ -213,10 +255,19 @@ class CPU:
             if byte == 0x07:
                 self.registers[regx] = self.delay_timer
 
-            # 0xFX0A: set Vx to sound timer
+            # 0xFX0A: await and set key press into Vx
             elif byte == 0x0a:
-                self.registers[regx] = self.sound_timer
-
+                key_pressed = False
+                while not key_pressed:
+                    event = pygame.event.wait()
+                    if event.type == pygame.KEYDOWN:
+                        keys_pressed = pygame.key.get_pressed()
+                        for keyval, lookup_key in KEY_MAPPING.items():
+                            if keys_pressed[lookup_key]:
+                                self.registers[regx] = keyval
+                                key_pressed = True
+                                break
+                    
             # 0xFX15: set delay timer to Vx
             elif byte == 0x15:
                 self.delay_timer = self.registers[regx]
@@ -234,7 +285,7 @@ class CPU:
                 if self.registers[regx] < 0x10:
                     self.instruction_pointer = 0x0050 + self.registers[regx] * 5 # offset for font location
                 else:
-                    print("invalid? idk" + str(self.registers[regx]))
+                    print("Invalid sprite map input; skipping")
 
             # 0xFX33: place binary-coded representation in memory
             elif byte == 0x33:
@@ -272,6 +323,11 @@ class CPU:
             raise ValueError
 
 
+    def decrement_timers(self):
+        self.sound_timer = max(0, self.sound_timer - 1)
+        self.delay_timer = max(0, self.delay_timer - 1)
+
+
 
 
 class Game:
@@ -284,19 +340,7 @@ class Game:
 
 
 
-filename = "15PUZZLE"
-game = Game(filename)
-
-
-
-
-def print_frame():
-    buf = game.game.display.framebuffer
-    for i in range(32):
-        s = ''
-        for j in range(64):
-            s += str(buf[i * 64 + j])
-        print(s)
+game = Game(filepath)
 
 
 game.emulate()
