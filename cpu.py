@@ -5,10 +5,12 @@ import pygame
 
 
 EXECUTE_DELAY = 1 # milliseconds
+TIMER_DELAY = 17
 TIMER = pygame.USEREVENT + 1
 
 
-filepath = "./games/GUESS"
+filepath = "./games/BLINKY"
+soundpath = "square.wav"
 
 
 
@@ -23,6 +25,8 @@ class CPU:
         self.stack = list()
         self.display = Display()
         self.initialize_memory(program)
+        pygame.mixer.init(buffer=1)
+        self.sound = pygame.mixer.Sound(file=soundpath)
 
 
     def initialize_memory(self, program):
@@ -36,7 +40,7 @@ class CPU:
         counter = 0
         running = True
 
-        pygame.time.set_timer(TIMER, EXECUTE_DELAY)
+        pygame.time.set_timer(TIMER, TIMER_DELAY)
 
         
         while running:
@@ -50,6 +54,12 @@ class CPU:
 
                 if event.type == TIMER:
                     self.decrement_timers()
+
+            if (self.sound_timer > 0):
+                if not pygame.mixer.get_busy():
+                    self.sound.play(loops=-1)                    
+            else:
+                self.sound.stop()
 
 
         pygame.display.quit()
@@ -140,44 +150,43 @@ class CPU:
 
             # 0x8XY1: Vx = Vx OR Vy
             elif nibble == 1:
-                self.registers[regx] = self.registers[regx] | self.registers[regy]
+                self.registers[regx] |= self.registers[regy]
 
             # 0x8XY2: Vx = Vx AND Vy
             elif nibble == 2:
-                self.registers[regx] = self.registers[regx] & self.registers[regy]
+                self.registers[regx] &= self.registers[regy]
 
             # 0x8XY3: Vx = Vx XOR Vy
             elif nibble == 3:
-                self.registers[regx] = self.registers[regx] ^ self.registers[regy]
+                self.registers[regx] ^= self.registers[regy]
 
             # 0x8XY4: Vx = Vx + Vy; Vf overflow
             elif nibble == 4:
                 added = self.registers[regx] + self.registers[regy]
                 self.registers[regx] = added & 0xff
-                self.registers[0xf] = int((added >> 8) > 0)
+                self.registers[0xf] = int(added > 255)
 
             # 0x8XY5: Vx = Vx - Vy; Vf overflow
             elif nibble == 5:
                 borrow = 1
                 subtracted = self.registers[regx] - self.registers[regy]
                 if subtracted < 0:
-                    subtracted = (self.registers[regx] & (1 << 8)) - self.registers[regy]
+                    subtracted += 256
                     borrow = 0
                 self.registers[regx] = subtracted
                 self.registers[0xf] = borrow
 
             # 0x8XY6: LSB(Vx) -> Vf; Vx = Vx >> 1
             elif nibble == 6:
-                lsb = self.registers[regx] & 0x1
+                self.registers[0xf] = self.registers[regx] & 0x1
                 self.registers[regx] = self.registers[regx] >> 1
-                self.registers[0xf] = lsb
 
             # 0x8XY7: Vx = Vy - Vx; Vf overflow
             elif nibble == 7:
                 borrow = 1
                 subtracted = self.registers[regy] - self.registers[regx]
                 if subtracted < 0:
-                    subtracted = (self.registers[regy] & (1 << 8)) - self.registers[regx]
+                    subtracted += 256
                     borrow = 0
                 self.registers[regx] = subtracted
                 self.registers[0xf] = borrow
@@ -185,9 +194,8 @@ class CPU:
 
             # 0x8XYE: MSB(Vx) -> Vf; Vx = Vx << 1
             elif nibble == 0xe:
-                msb = (self.registers[regx] & 0x80) >> 7
+                self.registers[0xf] = (self.registers[regx] & 0x80) >> 7
                 self.registers[regx] = self.registers[regx] << 1
-                self.registers[0xf] = msb
 
             else:
                 print("Invalid instruction; skipping")
@@ -278,7 +286,7 @@ class CPU:
 
             # 0xFX1E: increment instruction pointer by Vx
             elif byte == 0x1e:
-                self.instruction_pointer += self.registers[regx]
+                self.instruction_pointer = (self.instruction_pointer + self.registers[regx]) & 0xffff
 
             # 0xFX29: set instruction pointer to hex digit in Vx
             elif byte == 0x29:
@@ -305,6 +313,7 @@ class CPU:
                 start_ind = self.instruction_pointer
                 end_ind = self.instruction_pointer + regx + 1
                 self.memory[start_ind:end_ind] = self.registers[:regx + 1]
+                # self.instruction_pointer += regx + 1
 
             # 0xFX65: load registers V0 to Vx from memory
             elif byte == 0x65:
@@ -313,6 +322,8 @@ class CPU:
                 start_ind = self.instruction_pointer
                 end_ind = self.instruction_pointer + regx + 1
                 self.registers[:regx + 1] = self.memory[start_ind:end_ind]
+                # self.instruction_pointer += regx + 1
+
 
             else:
                 print("Invalid instruction; skipping")
@@ -341,6 +352,4 @@ class Game:
 
 
 game = Game(filepath)
-
-
 game.emulate()
