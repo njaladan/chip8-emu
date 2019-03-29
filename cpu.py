@@ -5,11 +5,11 @@ import pygame
 
 
 EXECUTE_DELAY = 1 # milliseconds
-TIMER_DELAY = 17
+TIMER_DELAY = 17 # 60 Hz update frequency
 TIMER = pygame.USEREVENT + 1
 
 
-filepath = "./games/BLINKY"
+filepath = "./games/PONG"
 soundpath = "square.wav"
 
 
@@ -42,7 +42,7 @@ class CPU:
 
         pygame.time.set_timer(TIMER, TIMER_DELAY)
 
-        
+
         while running:
             pygame.time.wait(EXECUTE_DELAY)
             self.emulate_cycle()
@@ -57,7 +57,7 @@ class CPU:
 
             if (self.sound_timer > 0):
                 if not pygame.mixer.get_busy():
-                    self.sound.play(loops=-1)                    
+                    self.sound.play(loops=-1)
             else:
                 self.sound.stop()
 
@@ -241,7 +241,7 @@ class CPU:
             mapped_key = KEY_MAPPING[key_val]
             keys = pygame.key.get_pressed()
             keypress = keys[mapped_key]
-            
+
             if byte == 0x9e:
                 if keypress:
                     self.program_counter += 4
@@ -275,7 +275,11 @@ class CPU:
                                 self.registers[regx] = keyval
                                 key_pressed = True
                                 break
-                    
+                    if event.type == pygame.QUIT:
+                        pygame.display.quit()
+                        pygame.quit()
+                        exit(1)
+
             # 0xFX15: set delay timer to Vx
             elif byte == 0x15:
                 self.delay_timer = self.registers[regx]
